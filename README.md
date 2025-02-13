@@ -4,7 +4,7 @@ A modern, web-based screen recording application built with Next.js and TypeScri
 
 ## Project Background
 
-This project was created as a side project to facilitate the creation of tutorial videos for team training and documentation purposes. The need for a simple, yet effective screen recording tool that could capture both screen content and system audio led to the development of this application.
+This project was created as a fun project to facilitate the creation of tutorial videos for team training and documentation purposes. The need for a simple, yet effective screen recording tool that could capture both screen content and system audio led to the development of this application.
 
 ## Features
 
