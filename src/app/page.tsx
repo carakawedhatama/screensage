@@ -1,101 +1,262 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import React, { useState, useRef, useEffect } from 'react';
+import { Camera, StopCircle, Video, Download, Pause, Play } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+
+const ScreenRecorder = () => {
+  const [recording, setRecording] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [videoBlob, setVideoBlob] = useState<Blob | null>(null);
+  const [error, setError] = useState('');
+  const [elapsedTime, setElapsedTime] = useState(0);
+  const [countdown, setCountdown] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Timer logic
+  useEffect(() => {
+    if (recording && !paused) {
+      timerRef.current = setInterval(() => {
+        setElapsedTime(prev => prev + 1);
+      }, 1000);
+    } else {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    }
+
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, [recording, paused]);
+
+  // Countdown logic
+  useEffect(() => {
+    if (countdown > 0) {
+      const countdownInterval = setInterval(() => {
+        setCountdown(prev => prev - 1);
+      }, 1000);
+
+      return () => clearInterval(countdownInterval);
+    } else if (countdown === 0 && mediaRecorderRef.current === null) {
+      initiateRecording();
+    }
+  }, [countdown]);
+
+  const formatTime = (seconds: number) => {
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    
+    const parts = [];
+    if (hrs > 0) parts.push(hrs.toString().padStart(2, '0'));
+    parts.push(mins.toString().padStart(2, '0'));
+    parts.push(secs.toString().padStart(2, '0'));
+    
+    return parts.join(':');
+  };
+
+  const initiateRecording = async () => {
+    try {
+      const displayStream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: true
+      });
+
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const loopbackDevice = devices.find(
+        (device) => device.kind === "audioinput" && device.label.includes("Loopback")
+      );
+
+      let audioStream;
+      if (loopbackDevice) {
+        audioStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            deviceId: loopbackDevice.deviceId,
+          },
+        });
+      } else {
+        console.warn("Loopback device not found, defaulting to microphone.");
+        audioStream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        });
+      }
+
+      const tracks = [
+        ...displayStream.getTracks(),
+        ...(audioStream?.getTracks() || [])
+      ];
+      const combinedStream = new MediaStream(tracks);
+
+      streamRef.current = combinedStream;
+      const mediaRecorder = new MediaRecorder(combinedStream, {
+        mimeType: 'video/webm;codecs=vp8,opus'
+      });
+      mediaRecorderRef.current = mediaRecorder;
+      chunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          chunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: 'video/webm' });
+        setVideoBlob(blob);
+        tracks.forEach(track => track.stop());
+        streamRef.current = null;
+      };
+
+      mediaRecorder.start();
+      setRecording(true);
+      setPaused(false);
+      setError('');
+    } catch (err) {
+      setError('Failed to start recording. Please ensure you have granted necessary permissions.');
+      setCountdown(0);
+    }
+  };
+
+  const startRecording = () => {
+    setElapsedTime(0);
+    setCountdown(3); // 3 second countdown
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && recording) {
+      mediaRecorderRef.current.stop();
+      setRecording(false);
+      setPaused(false);
+    }
+  };
+
+  const togglePause = () => {
+    if (mediaRecorderRef.current && recording) {
+      if (paused) {
+        mediaRecorderRef.current.resume();
+        setPaused(false);
+      } else {
+        mediaRecorderRef.current.pause();
+        setPaused(true);
+      }
+    }
+  };
+
+  const downloadVideo = () => {
+    if (videoBlob) {
+      const url = URL.createObjectURL(videoBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `screen-recording-${new Date().toISOString()}.webm`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  };
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+    <div className="p-6 max-w-2xl mx-auto">
+      <div className="space-y-6">
+        <div className="flex flex-col items-center space-y-4">
+          {countdown > 0 ? (
+            <div className="text-6xl font-bold text-blue-500 animate-pulse">
+              {countdown}
+            </div>
+          ) : (
+            <div className="text-2xl font-mono">
+              {formatTime(elapsedTime)}
+            </div>
+          )}
+          
+          <div className="flex justify-center space-x-4">
+            {!recording && !videoBlob && !countdown && (
+              <Button onClick={startRecording} className="flex items-center space-x-2">
+                <Video className="w-4 h-4" />
+                <span>Start Recording</span>
+              </Button>
+            )}
+            
+            {recording && (
+              <>
+                <Button 
+                  onClick={togglePause} 
+                  variant="outline" 
+                  className="flex items-center space-x-2"
+                >
+                  {paused ? (
+                    <>
+                      <Play className="w-4 h-4" />
+                      <span>Resume</span>
+                    </>
+                  ) : (
+                    <>
+                      <Pause className="w-4 h-4" />
+                      <span>Pause</span>
+                    </>
+                  )}
+                </Button>
+                
+                <Button 
+                  onClick={stopRecording} 
+                  variant="destructive" 
+                  className="flex items-center space-x-2"
+                >
+                  <StopCircle className="w-4 h-4" />
+                  <span>Stop Recording</span>
+                </Button>
+              </>
+            )}
+            
+            {videoBlob && (
+              <Button 
+                onClick={downloadVideo} 
+                variant="outline" 
+                className="flex items-center space-x-2"
+              >
+                <Download className="w-4 h-4" />
+                <span>Download Recording</span>
+              </Button>
+            )}
+          </div>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+
+        {videoBlob && (
+          <div className="mt-4">
+            <video 
+              src={URL.createObjectURL(videoBlob)} 
+              controls 
+              className="w-full rounded-lg shadow-lg"
+            />
+          </div>
+        )}
+
+        {error && (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        <div className="text-sm text-gray-500">
+          {recording ? (
+            <div className="flex items-center justify-center space-x-2">
+              <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+              <span>{paused ? "Recording paused" : "Recording in progress..."}</span>
+            </div>
+          ) : countdown > 0 ? (
+            <p className="text-center">Get ready to record...</p>
+          ) : (
+            <p className="text-center">Click "Start Recording" to begin capturing your screen</p>
+          )}
+        </div>
+      </div>
     </div>
   );
-}
+};
+
+export default ScreenRecorder;
