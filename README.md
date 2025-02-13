@@ -1,5 +1,7 @@
 # 🎥 ScreenSage
 
+![ScreenSage](assets/image/default.png)
+
 A modern, web-based screen recording application built with Next.js and TypeScript. This application allows users to record their screen with system audio support and provides a clean, intuitive interface for recording, pausing, and downloading screen captures.
 
 ## Project Background
